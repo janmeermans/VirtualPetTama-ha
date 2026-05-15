@@ -1,0 +1,11 @@
+{
+  "domain": "tamagotchi",
+  "name": "Tamagotchi",
+  "version": "1.0.0",
+  "documentation": "https://github.com/janmeermans/ha-tamagotchi",
+  "requirements": [],
+  "dependencies": [],
+  "codeowners": ["@janmeermans"],
+  "iot_class": "local_push",
+  "config_flow": true
+}

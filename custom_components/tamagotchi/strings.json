@@ -1,0 +1,19 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Create your Tamagotchi",
+        "description": "Give your virtual pet a name to get started!",
+        "data": {
+          "name": "Pet name"
+        }
+      }
+    },
+    "error": {
+      "name_empty": "Name cannot be empty."
+    },
+    "abort": {
+      "already_configured": "A Tamagotchi with that name already exists."
+    }
+  }
+}
