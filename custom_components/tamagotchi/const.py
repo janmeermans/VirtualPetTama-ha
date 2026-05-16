@@ -2,7 +2,7 @@
 
 DOMAIN = "tamagotchi"
 
-PLATFORMS = ["sensor", "binary_sensor", "button", "image", "select"]
+PLATFORMS = ["sensor", "binary_sensor", "button", "image", "number"]
 
 STORAGE_KEY = "tamagotchi"
 STORAGE_VERSION = 1

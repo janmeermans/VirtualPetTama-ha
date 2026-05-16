@@ -58,9 +58,6 @@ cards:
         entity: button.tamagotchi_tama_clean
 ```
 
-<img width="1603" height="1083" alt="image" src="https://github.com/user-attachments/assets/11423573-5731-47b7-923b-03f016c4aa1b" />
-
-
 ## Game Mechanics
 
 ### Lifecycle
