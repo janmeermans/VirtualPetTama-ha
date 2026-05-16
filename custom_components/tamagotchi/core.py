@@ -6,40 +6,53 @@ from datetime import datetime
 
 from .const import (
     STAGE_EGG, STAGE_BABY, STAGE_CHILD, STAGE_TEEN,
-    STAGE_ADULT, STAGE_SENIOR, STAGE_DEAD,
-    STAGES, STAGE_HOURS, STAT_MAX,
+    STAGE_ADULT, STAGE_ELDER, STAGE_DEAD,
+    STAGES, STAGE_HOURS, STAT_MAX, CREATURE_TYPES,
 )
 
 
 class TamagotchiCore:
-    """Pure-Python virtual pet state machine."""
+    """Pure-Python virtual pet state machine.
+
+    All stats (hunger, happiness, health) use a 0.0–10.0 float range.
+    Discipline uses a 0–10 integer range, starting at 0.
+    Values are displayed to the user as integers (floor).
+    """
 
     def __init__(self, name: str = "Tama") -> None:
         self.name: str = name
+
+        # --- Life state ---
         self.stage: str = STAGE_EGG
         self.age_hours: float = 0.0
-        self.stage_start_age: float = 0.0   # age_hours when current stage began
+        self.stage_start_age: float = 0.0
 
-        # Stats: 0.0 – 4.0 (hearts)
-        self.hunger: float = 4.0      # 4 = full, 0 = starving
-        self.happiness: float = 4.0   # 4 = happy, 0 = miserable
+        # --- Stats (0.0 – 10.0) ---
+        self.hunger: float    = STAT_MAX   # 10 = full
+        self.happiness: float = STAT_MAX   # 10 = happy
+        self.health: float    = STAT_MAX   # 10 = healthy; 0 = death
 
-        self.discipline: int = 50     # 0–100 %
-        self.weight: int = 5          # arbitrary units
-        self.poop_count: int = 0      # 0–4
-        self.care_mistakes: int = 0
+        # --- Integer stats ---
+        self.discipline: int = 0           # 0–10, starts at 0
+        self.weight: int     = 5
 
-        self.is_sick: bool = False
-        self.is_sleeping: bool = False
-        self.is_alive: bool = True
+        # --- Status flags ---
+        self.poop_count: int     = 0
+        self.care_mistakes: int  = 0
+        self.is_sick: bool       = False
+        self.is_sleeping: bool   = False
+        self.is_alive: bool      = True
         self.needs_attention: bool = False
 
-        # Visual animation frame (0 or 1), toggled by coordinator
+        # --- Creature identity (assigned when egg hatches) ---
+        self.creature_type: str = "dog"    # "dog" | "cat"
+
+        # --- Animation ---
         self.animation_frame: int = 0
 
-        # Configurable sleep window (24-h clock)
+        # --- Sleep schedule ---
         self.sleep_start_hour: int = 21
-        self.sleep_end_hour: int = 9
+        self.sleep_end_hour: int   = 9
 
     # ------------------------------------------------------------------
     # Serialisation
@@ -57,18 +70,18 @@ class TamagotchiCore:
         return obj
 
     # ------------------------------------------------------------------
-    # Game tick
+    # Game tick  (called every TICK_MINUTES minutes)
     # ------------------------------------------------------------------
 
     def tick(self, elapsed_minutes: float) -> list[str]:
-        """Advance the game by *elapsed_minutes*. Returns a list of event strings."""
+        """Advance the game clock. Returns a list of event strings."""
         if not self.is_alive:
             return []
 
         events: list[str] = []
         now_hour = datetime.now().hour
 
-        # ---- Sleep ----
+        # ---- Auto sleep ----
         if self.stage not in (STAGE_EGG, STAGE_DEAD):
             should_sleep = (
                 now_hour >= self.sleep_start_hour or now_hour < self.sleep_end_hour
@@ -80,40 +93,45 @@ class TamagotchiCore:
                 self.is_sleeping = False
                 events.append("woke_up")
 
+        # Sleeping pauses all decay
         if self.is_sleeping:
             return events
 
         # ---- Age ----
         self.age_hours += elapsed_minutes / 60.0
 
-        # ---- Stat decay ----
-        # Hunger: lose 1 heart per 30 min
-        self.hunger = max(0.0, self.hunger - elapsed_minutes / 30.0)
-        # Happiness: lose 1 heart per 60 min
-        self.happiness = max(0.0, self.happiness - elapsed_minutes / 60.0)
+        # ---- Hunger: −1 per hour ----
+        self.hunger = max(0.0, self.hunger - elapsed_minutes / 60.0)
 
-        # ---- Poop ----
-        if self.poop_count < 4 and random.random() < elapsed_minutes / 90.0:
-            self.poop_count += 1
-            events.append("pooped")
+        # ---- Happiness: −0.5 per hour (double when sick) ----
+        happiness_rate = 1.0 if self.is_sick else 0.5
+        self.happiness = max(0.0, self.happiness - happiness_rate * elapsed_minutes / 60.0)
 
-        # ---- Sickness ----
-        if not self.is_sick:
-            if self.poop_count >= 3 and random.random() < 0.4 * (elapsed_minutes / 60.0):
+        # ---- Health from poop: −1 per 2 hours per pile ----
+        if self.poop_count > 0:
+            self.health = max(
+                0.0,
+                self.health - self.poop_count * elapsed_minutes / 120.0,
+            )
+
+        # ---- Poop: 1 pile every ~6 hours, max 3 ----
+        if self.poop_count < 3:
+            poop_prob = elapsed_minutes / (6.0 * 60.0)
+            if random.random() < poop_prob:
+                self.poop_count += 1
+                events.append("pooped")
+
+        # ---- Sickness: ~once per week ----
+        if not self.is_sick and self.stage not in (STAGE_EGG, STAGE_BABY):
+            sick_prob = elapsed_minutes / (7.0 * 24.0 * 60.0)
+            if random.random() < sick_prob:
                 self.is_sick = True
                 events.append("got_sick")
-            elif self.weight > 10 and random.random() < 0.15 * (elapsed_minutes / 60.0):
-                self.is_sick = True
-                events.append("got_sick")
-
-        if self.is_sick:
-            # Extra happiness drain when ill
-            self.happiness = max(0.0, self.happiness - elapsed_minutes / 30.0)
 
         # ---- Attention flag ----
         wants = (
-            self.hunger < 1.0
-            or self.happiness < 1.0
+            self.hunger < 2.0
+            or self.happiness < 2.0
             or self.poop_count >= 2
             or self.is_sick
         )
@@ -121,11 +139,16 @@ class TamagotchiCore:
             self.needs_attention = True
             events.append("needs_attention")
 
-        # ---- Care mistakes ----
-        if self.needs_attention and (self.hunger < 0.5 or self.happiness < 0.5):
+        # ---- Care mistakes: incremented when ignored while critical ----
+        if self.needs_attention and (self.hunger < 1.0 or self.happiness < 1.0):
             self.care_mistakes += 1
 
-        # ---- Death from starvation ----
+        # ---- Death: health depleted ----
+        if self.health <= 0.0:
+            self._die(events)
+            return events
+
+        # ---- Death: starvation ----
         if self.hunger <= 0.0 and self.age_hours > 1.0:
             if random.random() < 0.25 * (elapsed_minutes / 60.0):
                 self._die(events)
@@ -137,16 +160,29 @@ class TamagotchiCore:
         return events
 
     def _check_evolution(self, events: list[str]) -> None:
-        if self.stage in (STAGE_DEAD, STAGE_SENIOR) or self.stage not in STAGE_HOURS:
+        if self.stage == STAGE_DEAD or self.stage not in STAGE_HOURS:
             return
         stage_age = self.age_hours - self.stage_start_age
-        if stage_age >= STAGE_HOURS[self.stage]:
-            idx = STAGES.index(self.stage)
-            if idx + 1 < len(STAGES):
-                old = self.stage
-                self.stage = STAGES[idx + 1]
-                self.stage_start_age = self.age_hours
-                events.append(f"evolved:{old}:{self.stage}")
+        if stage_age < STAGE_HOURS[self.stage]:
+            return
+
+        if self.stage == STAGE_ELDER:
+            # Natural death at end of elder stage
+            self._die(events)
+            events.append("natural_death")
+            return
+
+        idx = STAGES.index(self.stage)
+        if idx + 1 < len(STAGES):
+            old = self.stage
+            self.stage = STAGES[idx + 1]
+            self.stage_start_age = self.age_hours
+
+            # Assign creature type when hatching from egg
+            if old == STAGE_EGG:
+                self.creature_type = random.choice(CREATURE_TYPES)
+
+            events.append(f"evolved:{old}:{self.stage}")
 
     def _die(self, events: list[str]) -> None:
         self.is_alive = False
@@ -158,33 +194,38 @@ class TamagotchiCore:
     # ------------------------------------------------------------------
 
     def feed_meal(self) -> bool:
+        """Meal: hunger +2, weight +1."""
         if not self._can_act() or self.stage == STAGE_EGG:
             return False
         if self.hunger >= STAT_MAX:
             return False
-        self.hunger = min(STAT_MAX, self.hunger + 1.0)
+        self.hunger = min(STAT_MAX, self.hunger + 2.0)
         self.weight = min(99, self.weight + 1)
         self._update_attention()
         return True
 
     def feed_snack(self) -> bool:
+        """Snack: hunger +1, happiness +2, health −1, weight +1."""
         if not self._can_act() or self.stage == STAGE_EGG:
             return False
-        self.hunger = min(STAT_MAX, self.hunger + 0.5)
-        self.happiness = min(STAT_MAX, self.happiness + 0.5)
-        self.weight = min(99, self.weight + 2)
+        self.hunger    = min(STAT_MAX, self.hunger    + 1.0)
+        self.happiness = min(STAT_MAX, self.happiness + 2.0)
+        self.health    = max(0.0,      self.health    - 1.0)
+        self.weight    = min(99, self.weight + 1)
         self._update_attention()
         return True
 
     def play(self) -> bool:
+        """Play: happiness +1, weight −5 %."""
         if not self._can_act() or self.stage == STAGE_EGG:
             return False
         self.happiness = min(STAT_MAX, self.happiness + 1.0)
-        self.weight = max(1, self.weight - 1)
+        self.weight    = max(1, int(self.weight * 0.95))
         self._update_attention()
         return True
 
     def clean(self) -> bool:
+        """Remove all poop piles."""
         if not self.is_alive or self.poop_count == 0:
             return False
         self.poop_count = 0
@@ -192,19 +233,23 @@ class TamagotchiCore:
         return True
 
     def medicate(self) -> bool:
+        """Cure sickness; restore 2 health."""
         if not self.is_alive or not self.is_sick:
             return False
         self.is_sick = False
+        self.health  = min(STAT_MAX, self.health + 2.0)
         self._update_attention()
         return True
 
     def do_discipline(self) -> bool:
+        """Discipline +1 (max 10)."""
         if not self._can_act():
             return False
-        self.discipline = min(100, self.discipline + 10)
+        self.discipline = min(10, self.discipline + 1)
         return True
 
     def toggle_light(self) -> bool:
+        """Manually override sleep state."""
         if not self.is_alive:
             return False
         self.is_sleeping = not self.is_sleeping
@@ -219,29 +264,22 @@ class TamagotchiCore:
 
     def _update_attention(self) -> None:
         self.needs_attention = (
-            self.hunger < 1.0
-            or self.happiness < 1.0
+            self.hunger    < 2.0
+            or self.happiness < 2.0
             or self.poop_count >= 2
             or self.is_sick
         )
 
-    @property
-    def hunger_pct(self) -> int:
-        return round(self.hunger / STAT_MAX * 100)
+    # --- Display-friendly integer accessors ---
 
     @property
-    def happiness_pct(self) -> int:
-        return round(self.happiness / STAT_MAX * 100)
+    def hunger_int(self) -> int:
+        return int(self.hunger)
 
     @property
-    def health_score(self) -> int:
-        """Derived health 0-100 for display purposes."""
-        if not self.is_alive:
-            return 0
-        score = 100
-        score -= max(0, (4 - self.hunger) * 10)
-        score -= max(0, (4 - self.happiness) * 5)
-        score -= self.poop_count * 5
-        score -= 20 if self.is_sick else 0
-        score -= min(30, self.care_mistakes * 2)
-        return max(0, score)
+    def happiness_int(self) -> int:
+        return int(self.happiness)
+
+    @property
+    def health_int(self) -> int:
+        return int(self.health)

@@ -75,4 +75,4 @@ class TamagotchiDisplay(ImageEntity):
         """Return PNG bytes for the current frame."""
         if self.coordinator.tama is None:
             return None
-        return render(self.coordinator.tama)
+        return render(self.coordinator.tama, palette_name=self.coordinator.palette)

@@ -17,6 +17,8 @@ from .const import (
     ANIMATE_SECONDS,
     SIGNAL_STATE_UPDATED,
     SIGNAL_ANIMATE,
+    DEFAULT_PALETTE,
+    PALETTE_NAMES,
 )
 from .core import TamagotchiCore
 
@@ -32,6 +34,7 @@ class TamagotchiCoordinator:
         self.name = name
         self._store = Store(hass, STORAGE_VERSION, f"{STORAGE_KEY}_{entry_id}")
         self.tama: TamagotchiCore | None = None
+        self.palette: str = DEFAULT_PALETTE
         self._unsub_tick = None
         self._unsub_animate = None
 
@@ -55,7 +58,8 @@ class TamagotchiCoordinator:
         """Load persisted state and start game clock + animation ticker."""
         stored = await self._store.async_load()
         if stored:
-            self.tama = TamagotchiCore.from_dict(stored)
+            self.tama = TamagotchiCore.from_dict(stored.get("tama", stored))
+            self.palette = stored.get("palette", DEFAULT_PALETTE)
             _LOGGER.info("Loaded Tamagotchi '%s' from storage (stage=%s)", self.name, self.tama.stage)
         else:
             self.tama = TamagotchiCore(self.name)
@@ -137,9 +141,25 @@ class TamagotchiCoordinator:
         return result
 
     # ------------------------------------------------------------------
+    # Palette
+    # ------------------------------------------------------------------
+
+    async def async_set_palette(self, palette_name: str) -> None:
+        """Set the display colour palette and notify all listeners."""
+        if palette_name not in PALETTE_NAMES:
+            _LOGGER.warning("Unknown palette '%s'", palette_name)
+            return
+        self.palette = palette_name
+        await self._async_save()
+        async_dispatcher_send(self.hass, self.signal_animate)
+
+    # ------------------------------------------------------------------
     # Storage
     # ------------------------------------------------------------------
 
     async def _async_save(self) -> None:
         if self.tama is not None:
-            await self._store.async_save(self.tama.to_dict())
+            await self._store.async_save({
+                "tama": self.tama.to_dict(),
+                "palette": self.palette,
+            })

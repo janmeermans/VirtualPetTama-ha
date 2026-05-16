@@ -4,19 +4,21 @@ A virtual pet that lives inside Home Assistant. Care for it using sensors and bu
 
 ## Features
 
-- **16×16 pixel LCD display** rendered as an animated image entity
-- **Life stages**: Egg → Baby → Child → Teen → Adult → Senior → (death)
-- **Stats exposed as sensors**: hunger, happiness, discipline, weight, age, poop count, care mistakes
-- **Boolean sensors**: is_sick, is_sleeping, needs_attention, is_alive
+- **16×16 pixel LCD display** rendered as an animated image entity (144×144 px at 8× scale)
+- **Two creature types** — Dog or Cat, randomly chosen when the egg hatches
+- **Life stages**: Egg → Baby → Child → Teen → Adult → Elder → (natural death)
+- **Stats on a 0–10 scale**: hunger, happiness, health, discipline
+- **Sensors**: hunger, happiness, health, discipline, weight, age, stage, creature type, poop count, care mistakes
+- **Boolean sensors**: is_alive, is_sick, is_sleeping, needs_attention
 - **Action buttons**: Feed Meal, Feed Snack, Play, Clean, Medicate, Discipline, Toggle Light
+- **4 colour palettes**: Classic (Game Boy), Amber (CRT), Blue (Ocean), Sakura (Cherry) — switchable live via a Select entity
 - **Persistent state** — survives HA restarts
 - **Automatic sleep** based on real-world time (9 PM – 9 AM by default)
-- **Evolution quality** influenced by care mistakes and discipline
 
 ## Installation via HACS
 
 1. In HACS → Integrations → ⋮ → Custom repositories
-2. Add `https://github.com/janmeermans/ha-tamagotchi` as **Integration**
+2. Add `https://github.com/janmeermans/VirtualPetTama-ha` as **Integration**
 3. Install **Tamagotchi** and restart HA
 4. Settings → Devices & Services → Add Integration → **Tamagotchi**
 5. Give your pet a name and enjoy
@@ -43,6 +45,7 @@ cards:
     entities:
       - entity: sensor.tamagotchi_tama_hunger
       - entity: sensor.tamagotchi_tama_happiness
+      - entity: sensor.tamagotchi_tama_health
       - entity: sensor.tamagotchi_tama_stage
       - entity: binary_sensor.tamagotchi_tama_is_sick
   - type: horizontal-stack
@@ -60,12 +63,48 @@ cards:
 
 ## Game Mechanics
 
-| Stat | Range | Notes |
-|------|-------|-------|
-| Hunger | 0–4 hearts | Decreases ~1/30 min; 0 = starvation risk |
-| Happiness | 0–4 hearts | Decreases ~1/60 min |
-| Weight | 1–99 | Meals +1, snacks +2, playing -1 |
-| Discipline | 0–100 % | Raised by the Discipline button |
-| Poop | 0–4 piles | Auto-cleans needed; piles ≥3 → sick risk |
+### Lifecycle
 
-Neglecting the pet (hunger=0, happiness=0, or uncleaned poop) increments **care mistakes**, which affects evolution quality.
+| Stage  | Duration | Notes |
+|--------|----------|-------|
+| Egg    | 1 hour   | Hatches into Dog or Cat (random) |
+| Baby   | 6 hours  | Shared sprite for both creatures |
+| Child  | 5 days   | Sprites diverge: Dog vs Cat |
+| Teen   | 5 days   | Dog gains hair tuft; Cat gains taller ears |
+| Adult  | 15 days  | Peak stage |
+| Elder  | 5 days   | Dies naturally at the end |
+
+**Total natural lifespan:** ~30 days 7 hours.
+
+### Stats (all 0–10)
+
+| Stat       | Start | Meaning |
+|------------|-------|---------|
+| Hunger     | 10    | 10 = full, 0 = starving |
+| Happiness  | 10    | 10 = happy, 0 = miserable |
+| Health     | 10    | 10 = healthy, 0 = death |
+| Discipline | 0     | Starts at 0 for each new creature |
+
+### Stat Decay (while awake)
+
+| Stat      | Rate                    |
+|-----------|-------------------------|
+| Hunger    | −1 per hour             |
+| Happiness | −0.5 per hour (double when sick) |
+| Health    | −1 per 2 h × poop piles |
+
+> **Sleep pauses all decay.**
+
+### Actions
+
+| Button       | Effect |
+|--------------|--------|
+| Feed Meal    | Hunger +2, Weight +1 |
+| Feed Snack   | Hunger +1, Happiness +2, Health −1, Weight +1 |
+| Play         | Happiness +1, Weight −5 % |
+| Clean        | Removes all poop piles |
+| Medicate     | Cures sickness, Health +2 |
+| Discipline   | Discipline +1 (max 10) |
+| Toggle Light | Manually force sleep / wake |
+
+See [GAME_MECHANICS.md](GAME_MECHANICS.md) for the full reference.

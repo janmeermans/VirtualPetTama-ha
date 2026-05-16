@@ -2,7 +2,7 @@
   "domain": "tamagotchi",
   "name": "Tamagotchi",
   "version": "1.0.0",
-  "documentation": "https://github.com/janmeermans/ha-tamagotchi",
+  "documentation": "https://github.com/janmeermans/VirtualPetTama-ha",
   "requirements": [],
   "dependencies": [],
   "codeowners": ["@janmeermans"],
