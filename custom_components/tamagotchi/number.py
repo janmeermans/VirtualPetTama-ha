@@ -8,7 +8,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN, PALETTE_NAMES, DEFAULT_PALETTE
+from .const import DOMAIN, PALETTE_NAMES
 from .coordinator import TamagotchiCoordinator
 
 
@@ -72,7 +72,7 @@ class TamagotchiPaletteSlider(NumberEntity):
         idx = int(self.native_value)
         return {
             "palette_name": PALETTE_NAMES[idx],
-            "palettes": {i: name for i, name in enumerate(PALETTE_NAMES)},
+            "palettes": {str(i): name for i, name in enumerate(PALETTE_NAMES)},
         }
 
     # --------------------------------------------------------- push updates
